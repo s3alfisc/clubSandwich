@@ -1,7 +1,7 @@
 ---
 title: "Algorithm for cluster wild bootstrap"
 author: "James E. Pustejovsky"
-date: "March 16, 2017"
+date: "April 11, 2017"
 output: html_document
 ---
 
