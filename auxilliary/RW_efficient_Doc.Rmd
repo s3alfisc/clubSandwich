@@ -1,0 +1,456 @@
+---
+title: "RW_efficient Document"
+author: "Zhipeng"
+date: "4/16/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = F)
+```
+
+##Introduction
+
+This document will give the details of the RW_efficient() function, which implements wild bootstrap algorithm with CRVE estimator on hypothesis testing of a meta-analysis regression model. It is more efficient than RW_light because it uses residual absorption algorithm which substitutes the calculation on the full matrix $\mathbf{X} = \mathbf{[U \ T]}$ by smaller ones, $M_U$, etc.
+
+This function uses the R function, __vcovCR()__, from the R package, __clubSandwich__, by Professor James Pustejovsky. 
+
+## Arguments
+
+Here are the arguments of __RW_efficient()__.
+```{r, eval = F}
+# @param obj Fitted null model from which to calculate residuals for use in the
+#   cluster-wild bootstrap algorithm.
+# @param constraints formula specifying the set of additional parameter 
+#   restrictions to be tested.
+# @param bootstraps Integer specifying number of bootstrap replicates to 
+#   generate.
+# @param clusters a integer vector indicates the group id of each observation.
+# @param auxilliary_dist Function for generating auxilliary random variables 
+#   for perturbing the residuals in the cluster wild bootstrap algorithm. The 
+#   default is \code{r_Rademacher}, which samples from a two-point distribution 
+#   with equal mass at -1 and 1. A user-specified function may be passed 
+#   instead.
+# @param target Optional matrix or vector describing the working 
+#   variance-covariance model used to calculate the \code{CR2} and \code{CR4} 
+#   adjustment matrices. If a vector, the target matrix is assumed to be 
+#   diagonal. If not specified, \code{vcovCR} will attempt to infer a value.
+# @residual_adjustment Character string specifying which small-sample 
+#   adjustment to use when estimating the residuals under the null model. 
+#   Available options are the same as the \code{type} argument of 
+#   \code{\link{vcovCR}}. Default is \code{"CR2"}.
+# @test_adjustment. Character string specifying which small-sample adjustment 
+# to use when calculating the Wald test statistic. Available options are the
+# same as the \code{type} argument of \code{\link{vcovCR}}. Default is
+# \code{"CR0"}.
+# @param ... Additional arguments passed to \code{\link{vcovCR}} when 
+#   calculating the adjustment matrices used to estimate the residuals.
+# @inheritParams vcovCR
+
+Wild_bootstrap <- function(obj, constraints,  
+                           cluster, bootstraps = 2000,
+                           auxilliary_dist = r_Rademacher, 
+                           residual_adjustment = "CR2", 
+                           test_adjustment = "CR0", 
+                           random_seed = 2252,
+                           ...) {
+```
+
+## Step One:
+
+Extract useful data from the fitted null model, __obj__, and the constraints formula, __constraints__. (y,T,U,W)
+
+
+$$
+\mathbf{y}_j = \mathbf{T}_j \boldsymbol\alpha + \mathbf{U}_j \boldsymbol\beta + \mathbf{e}_j, \quad \text{where} \quad \mathbf{e}_j \sim N(\mathbf{0}, \boldsymbol\Sigma)
+$$
+
+```{r, eval =F}
+  ### Data needed from null model.
+  #### Study ID 
+  Study_id <- obj$X.full[,1]
+  cluster <- Study_id
+  
+  #### T matrix is a sub-covariate matrix that contains covariate not to be tested. (Covariate Matrix of the null model)
+  T_matrx <- obj$Xreg
+  T_list <- lapply(split(T_matrx, Study_id),matrix, ncol = ncol(T_matrx))
+
+  #### U matrix is a sub-covariate matrix that contains covariate to be tested.
+  #### X = [T U]
+  U_matrx <- model.matrix(data = obj$data,object =  constraints)
+  U_list <- lapply(split(U_matrx, Study_id),matrix, ncol = ncol(U_matrx))
+  
+  #### Y_matrx contains the outcome values
+  Y_matrx <- obj$data.full$effect.size
+  Y_list <- lapply(split(Y_matrx, Study_id),matrix, ncol = 1)
+  
+  #### By default, we will use fixed weights from the null model
+  #### Here I just want to make the function more flexible, in case we want to investigate models without weights. 
+  UseWeight <- T
+  if(UseWeight == T){
+    W_vector<- obj$data.full$r.weights
+  }else{
+    W_vector <- rep(x = 1,nrow(X_matrx)) # No weights. All 1s.
+    
+  }
+  
+  ####W_matrx is a diagonal matrix that contains the fixed weights on its diagonal
+  W_matrx <- diag(x = W_vector, nrow = length(W_vector))
+  W_list <- lapply(split(W_vector, Study_id), FUN = function(x){diag(x, nrow = length(x))})
+  
+  ####m is the number of groups
+  m <- length(Y_list)# Number of groups
+```
+
+
+## Step two:
+Calculate estimations and residuals of the null model.
+
+__alpha_tilde__ is the estimation for alpha under the null hypothesis. In another word, it is the coefficients of the null model.
+$$
+\boldsymbol{\tilde\alpha} = \mathbf{M_T} \mathbf{T}'\mathbf{W}\mathbf{y},
+$$
+where $\mathbf{M_T} = \left(\mathbf{T}'\mathbf{W}\mathbf{T}\right)^{-1}$. 
+
+__e_tilde__ is the residual of the null model. (Residuals of $\mathbf{y}$ on $\mathbf{T}$)
+$$
+\mathbf{\tilde{e}} = \mathbf{y} - \mathbf{T}\boldsymbol{\tilde\alpha} = \left(\mathbf{I} - \mathbf{H_T}\right) \mathbf{y}.
+$$
+where $\mathbf{H_T} = \mathbf{T} \mathbf{M_T} \mathbf{T}' \mathbf{W}$.
+
+```{r, eval =F}
+  ### Calculate alpha_tilde
+  #### alpha_tilde is the estimation for alpha under the null hypothesis
+  ####Actually:
+  ####alpha_tilde <- obj$b.r
+  sumTWT <- Reduce("+", Map(function(X,W) t(X) %*% W %*% X,
+                             T_list, W_list))
+  M_T_matrx <- solve(sumTWT)
+  sumTWy <- Reduce("+", Map(function(T_j,W_j,y_j) t(T_j) %*% W_j %*% y_j,
+                            T_list ,W_list, Y_list))
+
+  alpha_tilde <-  M_T_matrx %*% sumTWy
+  
+  
+  ###Calculate e_tilde
+  ####e_tilde is the residual under the null hypothesis. (Residual of Y on T)
+  
+  H_T_matrx <- T_matrx %*% M_T_matrx %*% t(T_matrx) %*% W_matrx # H = X * Q * X' * W
+  ImH_T_matrx <- diag(rep(x = 1,nrow(T_matrx))) - H_T_matrx
+  
+  e_tilde_matrx <- ImH_T_matrx %*% Y_matrx
+  ####Or:
+  ####e_tilde_matrx <- Y_matrx - T_matrx %*% alpha_tilde
+  ####Or:
+  ####e_tilde_matrx <- obj$data.full$e.r
+  e_tilde_list <- lapply(split(e_tilde_matrx, Study_id), matrix, ncol = 1)
+```
+
+
+## Step three:
+Calculate estimations, residuals and Q-statistics of the null model by RESIDUAL ABSORPTION.
+
+__U_dd_matrx__ is$\mathbf{\ddot{U}}$, the residuals from the WLS regression of $\mathbf{U}$ on $\mathbf{T}$.
+
+$$
+\mathbf{\ddot{U}} = \left(\mathbf{I} - \mathbf{H_T}\right)\mathbf{U}.
+$$
+
+
+```{r, eval = F}
+  ###Calculate U_dd_matrx. 
+  ####U_dd_matrx is the residuals from the WLS regression of U on T
+  
+  U_dd_matrx <- ImH_T_matrx %*% U_matrx
+  U_dd_list <- lapply(split(U_dd_matrx, Study_id),matrix, ncol = ncol(U_dd_matrx))
+```
+
+__beta_hat__,the WLS estimate of $\boldsymbol\beta$, can be calculated by taking the WLS regression of $\mathbf{\tilde{e}}$ on $\mathbf{\ddot{U}}$:
+$$
+\boldsymbol{\hat\beta} = \mathbf{M_{\ddot{U}}} \mathbf{\ddot{U}}' \mathbf{W} \mathbf{\tilde{e}},
+$$
+where $\mathbf{M_{\ddot{U}}} = \left(\mathbf{\ddot{U}}' \mathbf{W} \mathbf{\ddot{U}}\right)^{-1}$.
+
+```{r}
+  ###Calculate beta_hat. 
+  ####Beta_hat is the WLS estimation for beta under the MAIN/FULL model.
+  
+  sumU_ddWU_dd <- Reduce("+", Map(function(U_dd,W) t(U_dd) %*% W %*% U_dd,
+                                  U_dd_list, W_list))
+  
+  M_Udd_matrx <- solve(sumU_ddWU_dd)
+  
+  sumU_ddWe_tilde <- Reduce("+", Map(function(U_dd_j,W_j,e_tilde_j) t(U_dd_j) %*% W_j %*% e_tilde_j,
+                               U_dd_list ,W_list, e_tilde_list))
+  
+  beta_hat <- M_Udd_matrx %*%sumU_ddWe_tilde
+```
+
+__e_hat__,the residuals of the full model can also be calculated as:
+$$
+\mathbf{\hat{e}} = \mathbf{\tilde{e}} - \mathbf{\ddot{U}}\boldsymbol{\hat\beta}.
+$$
+```{r}
+  ###Calculate e_hat.
+  #e_hat is the residual of the MAIN/FULL model.
+  e_hat <- e_tilde_matrx - U_dd_matrx %*%beta_hat
+```
+
+With these quantities, we can calculate the robust variance-covariance matrix for the full model.
+$$
+\mathbf{V} = \mathbf{M_{\ddot{U}}}\left(\sum_{j=1}^m \mathbf{\ddot{U}}_j' \mathbf{W}_j \mathbf{A}_j \mathbf{\hat{e}}_j  \mathbf{\hat{e}}_j' \mathbf{A}_j \mathbf{W}_j \mathbf{\ddot{U}}_j \right)\mathbf{M_{\ddot{U}}},
+$$
+where $\mathbf{A}_1,...,\mathbf{A}_m$ are some adjustment matrices (these could be identity matrices or the BRL adjustment matrices).
+
+In implementation, I use the R function, _vcovCR()_, to get the corrected VCOV matrix $\mathbf{V}$.
+In order to do that, I have to create a "fake" __robu__ object. In R, I called it __obj_fullmodel__.
+
+__obj_fullmodel__ is a list that contains all necessary information for _vcovCR()_ to return an corrected VCOV matrix based on CR0, CR1, CR1S, CR3, etc.
+
+
+```{r}
+  ###Full model
+  
+  obj_fullmodel <- list(study_orig_id = obj$study_orig_id,
+                        b.r = T,
+                        data.full = list(e.r = e_hat,
+                                         avg.var.eff.size = obj$data.full$avg.var.eff.size,
+                                         r.weights = obj$data.full$r.weights,
+                                         userweights = obj$data.full$userweights),
+                        Xreg = cbind(U_matrx,T_matrx),
+                        user_weighting = obj$user_weighting,
+                        N = obj$N
+                        )
+  
+  class(obj_fullmodel) <- "robu"
+  
+  vcov_full <- vcovCR(obj = obj_fullmodel, cluster = cluster, type = test_adjustment)
+  ###Calculate Adjustment matrix for estimation of VCOV matrx.
+  
+  if (test_adjustment %in% c("CR0","CR1","CR1S")) {
+    if(test_adjustment == "CR0"){
+      #All identity matrices
+      A_list <-  lapply(split(rep(1, length(Study_id)), Study_id),diag)
+    }else{
+      ##Identity matrices * A_value
+      A_value <- attr(vcov_full, "adjustments")
+      A_list <-  lapply(split(rep(A_value, length(Study_id)), Study_id),diag)
+    }
+  }else{
+    
+    A_list <- attr(vcov_full, "adjustments")
+  }
+  
+
+```
+
+Then calculate the Wald test statistic
+$$
+Q = \boldsymbol{\hat\beta}' \mathbf{V}^{-1} \boldsymbol{\hat\beta}.
+$$
+
+```{r}
+  # calculate Wald test for updated model
+  vcov_full_beta <- vcov_full[1: ncol(U_matrx),1: ncol(U_matrx)]
+  Qstat <- as.numeric(t(beta_hat) %*% chol2inv(chol(vcov_full_beta)) %*% beta_hat)
+  
+```
+
+##Step Four: Bootstrap 
+
+###Generate bootstrap samples
+
+__B_list__ contains,$\mathbf{B_j}$, adjustment matrices calculated based on the null model. 
+
+In implementation, this is generated by calling the R function __vcovCR()__.
+
+
+```{r}
+  
+  # prepare for bootstrapping
+  ###Calculate adjustment matrix B_j. This keeps constant across all of the bootstrap sets.
+  
+  vcov_null <- vcovCR(obj = obj, cluster = cluster, type = residual_adjustment)
+  
+  
+  if (residual_adjustment %in% c("CR0","CR1","CR1S")) {
+    if(residual_adjustment == "CR0"){
+      #All identity matrices
+      B_list <-  lapply(split(rep(1, length(Study_id)), Study_id),diag)
+    }else{
+      ##Identity matrices * A_value
+      B_value <- attr(vcov_null, "adjustments")
+      B_list <-  lapply(split(rep(B_value, length(Study_id)), Study_id),diag)
+    }
+  }else{
+    
+    B_list <- attr(vcov_null, "adjustments")
+  }
+```
+
+__f_list__ contains corrected residuals of the null model. It will be used to generate the residuals of bootstrap samples.
+$\mathbf{f}_j = \mathbf{B}_j \boldsymbol{\tilde{e}}_j$
+
+```{r}  
+  ###Calculate corrected bootstrap residual f_j = B_j * e_tilde_j
+  
+  f_list <- Map(f = function(B_j, e_tilde_j) {B_j %*% e_tilde_j},
+                B_list , e_tilde_list)
+```
+
+For $b = 1,...,B$: $\mathbf{e}_j^{(b)} = \eta_j \mathbf{f}_j$, where $\eta_1,...,\eta_m$ are sampled from some auxilliary distribution (i.e., the Rademacher distribution or Webb's 6-point distribution).
+
+__e_b_vec_list__ contains the generated perturbed residuals.
+
+```{r}
+  ###Generate bootstrap samples
+  Get_e_b_vec <- function(){
+    #Step one: randomly generate auxilliary random variables 
+    eta_vec <- auxilliary_dist(n = m)
+    eta_list <- as.list(eta_vec)
+    
+    #Step two: Get bootstrap residual  e_b_j = f_j * eta_j
+    e_b_vec <- unlist(Map(f = function(residual, randomVec){residual*randomVec},
+                         f_list, eta_list))
+
+    return(e_b_vec)
+  }
+  
+  set.seed(random_seed)
+  #Get Bootstrap data list: a list of e_b_vec, bootstrap residuals.
+  e_b_vec_list <- replicate(n = bootstraps, 
+                           expr = Get_e_b_vec(),
+                           simplify = F)
+  
+```
+
+It is __IMPORTANT__ to note that the perturbed residuals here actually are NOT the residuals of the null model of the corresponding bootstrap sample set. This means, althought a bootstrap sample set is generated by $\mathbf{y}_j^{(b)} = \mathbf{T}_j \boldsymbol{\tilde\alpha} + \mathbf{e}_j^{(b)}$, the perturbed residual, $\mathbf{e}^{(b)}$, is not the OLS/WLS residual of $\mathbf{y}^{(b)}$ on $\mathbf{T}$. ($\boldsymbol{\tilde\alpha}$ is not the OLS/WLS estimation either).
+
+I have proved that the actual OLS/WLS residual $\mathbf{e}_{null}^{(b)} = (\mathbf{I} - \mathbf{H_T})\mathbf{e}^{(b)}$. The detailed proof with be shown in the attachment.
+
+### Calculate estimations and other statistics for each bootstrap sample sets.
+
+__beta_hat_b_list__ contains the WLS estimation of the full model of each bootstrap sample set.
+
+$$\boldsymbol{\hat\beta}^{(b)} = \mathbf{M_{\ddot{U}}} \sum_{j=1}^m \mathbf{E}_j \mathbf{e}_j^{(b)}$$, where $\mathbf{E}_j = \mathbf{\ddot{U}}_j'\mathbf{W}_j$. 
+
+```{r}
+  ###Calculate bootstrap Beta estimations
+  
+  ####E_j =  t(U_dd_j) %*% W_j
+  E_list <-  Map(f = function(U_dd_j, W_j){t(U_dd_j) %*% W_j},
+                 U_dd_list, W_list)
+    
+  ####G_j =  E_j %*% A_j
+  G_list <- Map(f = function(E_j, A_j){ E_j %*% A_j},
+                E_list , A_list)
+  
+  Get_beta_hat_b <- function(e_b_vec){
+    
+    e_b_list <- lapply(split(e_b_vec, Study_id),matrix, ncol = 1)
+    sumEe_b <- Reduce("+", Map(function(E_j,e_b_j) E_j %*% e_b_j,
+                               E_list, e_b_list))
+    beta_hat_b <- M_Udd_matrx %*% sumEe_b
+    
+    return(beta_hat_b)
+  }
+  beta_hat_b_list <- Map(f = Get_beta_hat_b, e_b_vec_list)
+```  
+
+__e_hat_b_vec_list__ contains the WLS residual of the FULL model of each bootstrap set.
+
+$$\mathbf{\hat{e}}^{(b)} = \mathbf{e}_{null}^{(b)} - \mathbf{\ddot{U}} \boldsymbol{\hat\beta}^{(b)}$$
+$$\mathbf{\hat{e}}^{(b)} = (\mathbf{I - H_T})\mathbf{e}^{(b)} - \mathbf{\ddot{U}} \boldsymbol{\hat\beta}^{(b)}$$
+
+```{r}
+  ###Calculate bootstrap residuals based on the full model.
+  
+  e_hat_b_vec_list <- Map(f = function(e_b_vec, beta_hat_b){ImH_T_matrx %*% e_b_vec - U_dd_matrx %*% beta_hat_b},
+                          e_b_vec_list, beta_hat_b_list)
+
+```
+
+The corrected vcov matrix, __vcov_b_list__, and the Q statistic, __Qstat_b_list__, of each bootstrap set can be easily calculated with
+
+$$\mathbf{V}^{(b)} = \mathbf{M_{\ddot{U}}}\left(\sum_{j=1}^m \mathbf{G}_j'\mathbf{\hat{e}}_j^{(b)} \left(\mathbf{\hat{e}}_j^{(b)}\right)' \mathbf{G}_j\right)\mathbf{M_{\ddot{U}}}$$
+And
+
+$$Q^{(b)} = \left(\boldsymbol{\hat\beta}^{(b)}\right)' \left(\mathbf{V}^{(b)}\right)^{-1} \boldsymbol{\hat\beta}^{(b)}$$
+
+```{r}
+  ###Calculate bootstrap vcov matrix estimations.
+  
+  Get_vcov_b <- function(e_hat_b_vec){
+    e_hat_b_list <- lapply(split(e_hat_b_vec, Study_id), matrix, ncol = 1)
+    sumGeeG <- Reduce("+", Map(function(G_j,e_hat_b_j) tcrossprod(G_j %*% e_hat_b_j),
+                                    G_list, e_hat_b_list))
+    
+    vcov_b <- M_Udd_matrx %*% sumGeeG %*% M_Udd_matrx
+  }
+  
+  vcov_b_list <- Map(f = Get_vcov_b, e_hat_b_vec_list)
+  
+  Qstat_b_list <- Map(f = function(beta_hat_b,vcov_b){t(beta_hat_b)%*%chol2inv(chol(vcov_b))%*%beta_hat_b},
+                      beta_hat_b_list, vcov_b_list)
+  
+  Qstat_b_vec <- unlist(Qstat_b_list)
+
+  
+```
+
+By comparing $Q^{(b)}$ with $Q$, we calculate the p-value corresponding to $H_0$ as 
+    $$p = \frac{1}{B} \sum_{b = 1}^B I\left(Q > Q^{(b)}\right)$$
+```{r}
+  ####Result Analysis
+  
+  
+  #95% quantile.
+  Significance_limit <- sort(Qstat_b_vec)[floor(bootstraps*0.95)]
+  
+  Boot_p_val <- sum(Qstat_b_vec > Qstat)/bootstraps
+  
+  #Determine if its significant.
+  Significance <- ifelse(Qstat>Significance_limit,"TURE","FALSE")
+  
+
+  res <- data.frame(Wald_statistic = Qstat, p_val = Boot_p_val)
+  return(res)
+}
+```
+
+
+##Attachment: Proof of  $\mathbf{e}_{null}^{(b)} = (\mathbf{I} - \mathbf{H_T})\mathbf{e}^{(b)}$
+
+At first, the WLS residual of $[\mathbf{y} \ \mathbf{T}]$, $\mathbf{e}$, satisfies this equation:
+$$\mathbf{y} = \mathbf{T} \tilde\alpha + \mathbf{e}$$
+
+In order to generate bootstarp samples, we need to perturb the residual $\mathbf{e}$ by a random variable $\eta$, with or without adjustment matrices $\mathbf{B_j}$
+
+$$\mathbf{e_j^{(b)}} = \eta_j\mathbf{e}_j$$ 
+Or,
+$$\mathbf{e_j^{(b)}} = \eta_j \mathbf{B_j} \mathbf{e_j}$$ 
+
+With the perturbed residuals, $\mathbf{e^{(b)}}$, along with the sub-covariate matrix, $\mathbf{T}$, and the WLS null model estimation, $\mathbf{\tilde\alpha}$, we can calculate the outcome, $\mathbf{y^{(b)}}$, of each bootstrap set.
+
+$$\mathbf{Y^{(b)}} = \mathbf{T}\mathbf{\tilde\alpha} + \mathbf{e^{(b)}}$$
+
+Now we have the bootstrap set, $[\mathbf{Y^{(b)}} \ \mathbf{T} \ \mathbf{U}]$, with which we can calculated the residuals of the null model by:
+
+\begin{equation}
+\begin{split}
+\mathbf{e_{null}^{(b)}} & = \mathbf{Y^{(b)}} - \mathbf{\hat{Y}^{(b)}} \\
+ & = \mathbf{Y^{(b)}}  - \mathbf{T(T'T)^{-1}T'Y^{(b)}} \\
+ & = \mathbf{T}\mathbf{\tilde\alpha} + \mathbf{e^{(b)}} - \mathbf{T(T'T)^{-1}T'T\mathbf{\tilde\alpha}} -  \mathbf{T(T'T)^{-1}T'}\mathbf{e^{(b)}}\\
+ & = \mathbf{T}\mathbf{\tilde\alpha} + \mathbf{e^{(b)}} - \mathbf{T}\mathbf{\tilde\alpha} -  \mathbf{H_T}\mathbf{e^{(b)}}\\
+ & = \mathbf{e^{(b)}} - \mathbf{H_T}\mathbf{e^{(b)}}\\
+ & = (\mathbf{I - H_T})\mathbf{e^{(b)}}\\
+\end{split}
+\end{equation}
+
+Please note that, actually: 
+$$\mathbf{H_T} \ \mathbf{e} = \mathbf{0}$$
+and
+$$(\mathbf{I - H_T})\mathbf{e} = \mathbf{e}$$
+However,$\mathbf{e^{(b)}} \neq \mathbf{e}$, beacuse we disturbed and/or corrected the residual.
+
+
