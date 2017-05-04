@@ -4,20 +4,24 @@ Wild_bootstrap <- function(obj, constraints,
                                  auxilliary_dist = r_Rademacher, 
                                  residual_adjustment = "CR2", 
                                  test_adjustment = "CR0", 
-                                 random_seed = 2252,
+                                 seed = NULL,
                                  ...) {
+  
+  if (!is.null(seed)) set.seed(seed)
+  
+  # get null adjustment matrices and associated stuff
+  vcov_null <- vcovCR(obj, cluster = cluster, type = residual_adjustment, ...)
+  cluster <- attr(vcov_null, "cluster")
   
   # fit expanded model by updating obj according to constraints
   
   ### Data needed to generate bootstrap samples
   
-  cluster <- droplevels(as.factor(cluster))
-  
   T_matrx <- model_matrix(obj)
   T_list <-  matrix_list(T_matrx, cluster, "row")
   
-  U_matrx <- model.matrix(data = obj$data,object =  constraints) # question: add an argument called "data"?
-  U_list <- lapply(split(U_matrx, cluster),matrix, ncol = ncol(U_matrx))
+  U_matrx <- model.matrix(data = obj$data, object =  constraints) # question: add an argument called "data"?
+  U_list <- matrix_list(U_matrx, cluster, "row")
 
   UseWeight <- T
   if(UseWeight == T){
@@ -31,7 +35,7 @@ Wild_bootstrap <- function(obj, constraints,
   }
   
 
-  J <- nlevels(cluster)# Number of groups
+  J <- nlevels(cluster) # Number of groups
   
   
   ### Calculate alpha_tilde
@@ -43,8 +47,8 @@ Wild_bootstrap <- function(obj, constraints,
   ###Calculate e_tilde
   #e_tilde is the residual under the null hypothesis. (Residual of Y on T)
   
-  e_tilde_matrx <- as.matrix(residuals_CS(obj))
-  e_tilde_list <- matrix_list(e_tilde_matrx, cluster, "row")
+  e_tilde <- residuals_CS(obj)
+  e_tilde_list <- split(e_tilde, cluster)
   
   ###Calculate U_dd_matrx. 
   
@@ -78,7 +82,7 @@ Wild_bootstrap <- function(obj, constraints,
   
   ###Calculate e_hat.
   #e_hat is the residual of the MAIN/FULL model.
-  e_hat <- e_tilde_matrx - U_dd_matrx %*%beta_hat
+  e_hat <- e_tilde - U_dd_matrx %*% beta_hat
   
   ###Full model
   
@@ -96,6 +100,7 @@ Wild_bootstrap <- function(obj, constraints,
   class(obj_fullmodel) <- "robu"
   
   vcov_full <- vcovCR(obj = obj_fullmodel, cluster = cluster, type = test_adjustment)
+  
   ###Calculate Adjustment matrix for estimation of VCOV matrx.
 
   A_value <- attr(vcov_full, "adjustments")

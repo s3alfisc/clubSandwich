@@ -11,7 +11,7 @@
 
 <meta name="author" content="James E. Pustejovsky" />
 
-<meta name="date" content="2017-04-11" />
+<meta name="date" content="2017-05-04" />
 
 <title>Algorithm for cluster wild bootstrap</title>
 
@@ -119,7 +119,7 @@ $(document).ready(function () {
 
 <h1 class="title toc-ignore">Algorithm for cluster wild bootstrap</h1>
 <h4 class="author"><em>James E. Pustejovsky</em></h4>
-<h4 class="date"><em>April 11, 2017</em></h4>
+<h4 class="date"><em>May 04, 2017</em></h4>
 
 </div>
 
@@ -156,8 +156,9 @@ Q = \boldsymbol{\hat\beta}' \mathbf{V}^{-1} \boldsymbol{\hat\beta}.
 <li>Calculate <span class="math inline">\(\mathbf{f}_j = \mathbf{B}_j \boldsymbol{\tilde{e}}_j\)</span></li>
 <li>For <span class="math inline">\(b = 1,...,B\)</span>:
 <ol style="list-style-type: lower-alpha">
-<li>Calculate <span class="math inline">\(\mathbf{e}_j^{(b)} = \eta_j \mathbf{f}_j\)</span>.</li>
-<li>Calculate <span class="math inline">\(\boldsymbol{\hat\beta}^{(b)} = \mathbf{M_{\ddot{U}}} \sum_{j=1}^m \mathbf{E}_j \mathbf{e}_j^{(b)}\)</span>.</li>
+<li>Calculate the full vector of perturbed residuals as <span class="math inline">\(\mathbf{e}^{(b)} = \left(\eta_1\mathbf{f}_1',...,\eta_m\mathbf{f}_m'\right)'\)</span>.</li>
+<li>Adjust the perturbed residuals for the null model by taking <span class="math inline">\(\mathbf{\tilde{e}}^{(b)} = \left(\mathbf{I} - \mathbf{H_T}\right) \mathbf{e}^{(b)}\)</span>. Let <span class="math inline">\(\mathbf{\tilde{e}}^{(b)}_j\)</span> denote the sub-vector of <span class="math inline">\(\mathbf{\tilde{e}}^{(b)}\)</span> corresponding to cluster <span class="math inline">\(j\)</span>.</li>
+<li>Calculate <span class="math inline">\(\boldsymbol{\hat\beta}^{(b)} = \mathbf{M_{\ddot{U}}} \sum_{j=1}^m \mathbf{E}_j \mathbf{\tilde{e}}_j^{(b)}\)</span>.</li>
 <li>Calculate <span class="math inline">\(\mathbf{\hat{e}}_j^{(b)} = \mathbf{e}_j^{(b)} - \mathbf{\ddot{U}}_j \boldsymbol{\hat\beta}^{(b)}\)</span>.</li>
 <li>Calculate <span class="math inline">\(\mathbf{V}^{(b)} = \mathbf{M_{\ddot{U}}}\left(\sum_{j=1}^m \mathbf{G}_j'\mathbf{\hat{e}}_j^{(b)} \left(\mathbf{\hat{e}}_j^{(b)}\right)' \mathbf{G}_j\right)\mathbf{M_{\ddot{U}}}\)</span></li>
 <li>Calculate <span class="math inline">\(Q^{(b)} = \left(\boldsymbol{\hat\beta}^{(b)}\right)' \left(\mathbf{V}^{(b)}\right)^{-1} \boldsymbol{\hat\beta}^{(b)}\)</span>.</li>

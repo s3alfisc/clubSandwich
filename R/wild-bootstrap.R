@@ -22,72 +22,72 @@ r_sixpoint <- function(n) {
 #----------------------------------------------
 
 #' Cluster-wild bootstrap F test
-#' 
-#' \code{vcovCR} returns a sandwich estimate of the variance-covariance matrix 
+#'
+#' \code{vcovCR} returns a sandwich estimate of the variance-covariance matrix
 #' of a set of regression coefficient estimates.
-#' 
+#'
 #' @param obj Fitted null model from which to calculate residuals for use in the
 #'   cluster-wild bootstrap algorithm.
-#' @param constraints formula specifying the set of additional parameter 
+#' @param constraints formula specifying the set of additional parameter
 #'   restrictions to be tested.
-#' @param bootstraps Integer specifying number of bootstrap replicates to 
+#' @param bootstraps Integer specifying number of bootstrap replicates to
 #'   generate.
-#' @param auxilliary_dist Function for generating auxilliary random variables 
-#'   for perturbing the residuals in the cluster wild bootstrap algorithm. The 
-#'   default is \code{r_Rademacher}, which samples from a two-point distribution 
-#'   with equal mass at -1 and 1. A user-specified function may be passed 
+#' @param auxilliary_dist Function for generating auxilliary random variables
+#'   for perturbing the residuals in the cluster wild bootstrap algorithm. The
+#'   default is \code{r_Rademacher}, which samples from a two-point distribution
+#'   with equal mass at -1 and 1. A user-specified function may be passed
 #'   instead.
-#' @param target Optional matrix or vector describing the working 
-#'   variance-covariance model used to calculate the \code{CR2} and \code{CR4} 
-#'   adjustment matrices. If a vector, the target matrix is assumed to be 
+#' @param target Optional matrix or vector describing the working
+#'   variance-covariance model used to calculate the \code{CR2} and \code{CR4}
+#'   adjustment matrices. If a vector, the target matrix is assumed to be
 #'   diagonal. If not specified, \code{vcovCR} will attempt to infer a value.
-#' @residual_adjustment Character string specifying which small-sample 
-#'   adjustment to use when estimating the residuals under the null model. 
-#'   Available options are the same as the \code{type} argument of 
+#' @residual_adjustment Character string specifying which small-sample
+#'   adjustment to use when estimating the residuals under the null model.
+#'   Available options are the same as the \code{type} argument of
 #'   \code{\link{vcovCR}}. Default is \code{"CR2"}.
-#' @test_adjustment. Character string specifying which small-sample adjustment 
+#' @test_adjustment. Character string specifying which small-sample adjustment
 #' to use when calculating the Wald test statistic. Available options are the
 #' same as the \code{type} argument of \code{\link{vcovCR}}. Default is
 #' \code{"CR0"}.
-#' @param ... Additional arguments passed to \code{\link{vcovCR}} when 
+#' @param ... Additional arguments passed to \code{\link{vcovCR}} when
 #'   calculating the adjustment matrices used to estimate the residauls.
 #' @inheritParams vcovCR
-#'   
+#'
 #' @description
 #' @details
 #' @references
 #' @return
-#' @examples 
-#' 
-#' 
+#' @examples
+#'
+#'
 #' @export
 
 
-Wild_bootstrap <- function(obj, constraints,  
+Wild_bootstrap <- function(obj, constraints,
                            cluster, bootstraps = 2000,
-                           auxilliary_dist = r_Rademacher, 
-                           residual_adjustment = "CR2", 
-                           test_adjustment = "CR0", 
+                           auxilliary_dist = r_Rademacher,
+                           residual_adjustment = "CR2",
+                           test_adjustment = "CR0",
                            ...) {
-  
+
   # fit expanded model by updating obj according to constraints
-  
+
   # calculate Wald test for updated model
   vcov_updated <-
   Qstat <- as.numeric(t(beta) %*% chol2inv(chol(vcov_updated)) %*% beta)
-  
+
   # prepare for bootstrapping
-  
-  J <- nlevels(cluster)  
+
+  J <- nlevels(cluster)
   vcov_null <- vcovCR(obj, cluster = cluster, type = residual_adjustment, ...)
   res_list_null <- split(residuals_CS(obj), cluster)
   B_mats <- attr(vcov_null, "adjustments")
   eta_j <- auxilliary_dist(n = J)
-  
+
   # simulate bootstrap distribution of Wald test statistic
-  
+
   # calculate p-value from bootstrapped distribution
-  
+
   res <- data.frame(Wald_statistic = Q, p_val = p_val)
   return(res)
 }
