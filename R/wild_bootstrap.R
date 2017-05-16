@@ -4,10 +4,8 @@ Wild_bootstrap <- function(obj, constraints,
                                  auxilliary_dist = r_Rademacher, 
                                  residual_adjustment = "CR2", 
                                  test_adjustment = "CR0", 
-                                 seed = NULL,
+                                 random_seed = NULL,
                                  ...) {
-  
-  if (!is.null(seed)) set.seed(seed)
   
   # get null adjustment matrices and associated stuff
   vcov_null <- vcovCR(obj, cluster = cluster, type = residual_adjustment, ...)
