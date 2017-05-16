@@ -20,18 +20,18 @@ robu_result_main$reg_table[6,]
 
 ##Constraints is a formula.
 constraints<- as.formula("~average_age-1")
-obj = robu_result_null
-constraints= constraints
-cluster = obj$study_orig_id
-residual_adjustment = "CR2"
-test_adjustment = "CR2"
-seed = 2252
-bootstraps = 2000
-auxilliary_dist = r_Rademacher
+#obj = robu_result_null
+#constraints= constraints
+#cluster = obj$study_orig_id
+#residual_adjustment = "CR2"
+#test_adjustment = "CR2"
+#seed = 2252
+#bootstraps = 2000
+#auxilliary_dist = r_Rademacher
 ##Wild bootstrap result. (NULL HYPOTHESIS: average_age has no effect)
 result<- Wild_bootstrap(obj = robu_result_null,
                constraints= constraints,
-               cluster = NULL,
+               cluster = dropoutPrevention$studyID,
                residual_adjustment = "CR2", 
                test_adjustment = "CR2", 
                random_seed = 2252)
