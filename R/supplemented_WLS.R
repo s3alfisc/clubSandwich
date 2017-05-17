@@ -1,0 +1,132 @@
+#-------------------------------------
+# vcovCR with defaults
+#-------------------------------------
+
+#' Cluster-robust variance-covariance matrix for a supplemented_WLS object. This is used a working object for Wild_bootstrap().
+#' 
+#' \code{vcovCR} returns a sandwich estimate of the variance-covariance matrix 
+#' of a set of regression coefficient estimates from a
+#' \code{supplemented_WLS} object.
+#' 
+#' @param cluster Optional expression or vector indicating which observations 
+#'   belong to the same cluster. If not specified, will be set to the
+#'   \code{studynum} used in fitting the \code{supplemented_WLS} object.
+#' @param target Optional matrix or vector describing the working 
+#'   variance-covariance model used to calculate the \code{CR2} and \code{CR4} 
+#'   adjustment matrices. If not specified, the target is taken to be the 
+#'   inverse of the estimated weights used in fitting the
+#'   \code{\link[robumeta]{robu}} object.
+#' @inheritParams vcovCR
+#'   
+#' @return An object of class \code{c("vcovCR","clubSandwich")}, which consists 
+#'   of a matrix of the estimated variance of and covariances between the 
+#'   regression coefficient estimates.
+#'   
+#' @seealso \code{\link{vcovCR}}
+#'   
+#' @export
+#' 
+#' @examples 
+#' 
+#'
+#' 
+#' 
+#' obj_fullmodel <- list(study_orig_id = obj$study_orig_id,
+#'                       b.r = T,
+#'                       data.full = list(e.r = e_hat,
+#'                                        avg.var.eff.size = obj$data.full$avg.var.eff.size,
+#'                                        r.weights = obj$data.full$r.weights,
+#'                                        userweights = obj$data.full$userweights),
+#'                       Xreg = cbind(U_matrx,T_matrx),
+#'                       user_weighting = obj$user_weighting,
+#'                       N = obj$N
+#' )
+
+
+
+vcovCR.supplemented_WLS <- function(obj, cluster, type, target, inverse_var, form = "sandwich", ...) {
+  if (missing(cluster)) cluster <- obj$study_orig_id
+  if (missing(target)) target <- NULL
+  if (missing(inverse_var)) inverse_var <- is.null(target) & (!obj$user_weighting)
+  vcov_CR(obj, cluster = cluster, type = type, 
+          target = target, inverse_var = inverse_var, form = form)
+}
+
+#-----------------------------------------------
+# coefficients
+#-----------------------------------------------
+
+coef_CS.supplemented_WLS <- function(obj) {
+  beta <- as.vector(obj$b.r)
+  labs <- obj$reg_table$labels
+  names(beta) <- levels(labs)[labs]
+  beta
+}
+
+#-----------------------------------------------
+# residuals
+#-----------------------------------------------
+
+residuals_CS.supplemented_WLS <- function(obj) {
+  ord <- order(order(obj$study_orig_id))
+  obj$data.full$e.r[ord]
+}
+
+
+#-----------------------------------------------
+# Model matrix
+#-----------------------------------------------
+
+model_matrix.supplemented_WLS <- function(obj) {
+  ord <- order(order(obj$study_orig_id))
+  obj$Xreg[ord,]
+}
+
+#-------------------------------------
+# Get (model-based) working variance matrix 
+#-------------------------------------
+
+targetVariance.supplemented_WLS <- function(obj, cluster) {
+  ord <- order(order(obj$study_orig_id))
+  if (obj$user_weighting) {
+    V <- obj$data.full$avg.var.eff.size[ord]
+  } else {
+    V <- mean(obj$data.full$r.weights) / obj$data.full$r.weights[ord]
+  }
+  matrix_list(V, cluster, "both")
+}
+
+#-------------------------------------
+# Get weighting matrix
+#-------------------------------------
+
+weightMatrix.supplemented_WLS <- function(obj, cluster) {
+  ord <- order(order(obj$study_orig_id))
+  if (obj$user_weighting) { 
+    W <- obj$data.full$userweights[ord]
+  } else{
+    W <- obj$data.full$r.weights[ord]
+  }
+  w_scale <- mean(W)
+  W <- W / w_scale
+  W_list <- matrix_list(W, cluster, "both")
+  attr(W_list, "w_scale") <- w_scale
+  W_list
+}
+
+#---------------------------------------
+# Get bread matrix and scaling constant
+#---------------------------------------
+
+bread.supplemented_WLS <- function(x, ...) {
+  if (x$user_weighting) { 
+    W <- x$data.full$userweights
+  } else{
+    W <- x$data.full$r.weights
+  }
+  x$N * chol2inv(chol(crossprod(x$Xreg, W * x$Xreg)))
+}
+
+v_scale.supplemented_WLS <- function(obj) {
+  obj$N
+}
