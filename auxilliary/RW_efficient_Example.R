@@ -36,4 +36,4 @@ result<- Wild_bootstrap(obj = robu_result_null,
                test_adjustment = "CR2", 
                random_seed = 2252)
 
-result$res_vec
+result$res_df
