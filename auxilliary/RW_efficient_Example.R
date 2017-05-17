@@ -37,3 +37,18 @@ result<- Wild_bootstrap(obj = robu_result_null,
                random_seed = 2252)
 
 result$res_df
+
+
+lm_null <- lm(LOR1 ~ study_design + service_hrs+ duration, 
+                data = dropoutPrevention)
+
+constraints<- as.formula("~average_age-1")
+
+result_lm<- Wild_bootstrap(obj = lm_null,
+                        constraints= constraints,
+                        cluster = dropoutPrevention$studyID,
+                        residual_adjustment = "CR2", 
+                        test_adjustment = "CR2", 
+                        data = dropoutPrevention,
+                        random_seed = 2252)
+result_lm$res_df
